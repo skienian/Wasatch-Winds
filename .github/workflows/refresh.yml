@@ -1,0 +1,44 @@
+name: Refresh wind data
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+# One refresh at a time so two runs cannot overwrite each other's data.json.
+concurrency:
+  group: refresh-wind-data
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    # [skip ci] is also honored by GitHub for push events. This guard covers
+    # the data commit itself so a bot push cannot start another refresh.
+    if: ${{ github.event_name != 'push' || !contains(github.event.head_commit.message, '[skip ci]') }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Fetch observations
+        run: python3 fetch.py
+
+      - name: Commit data.json if it changed
+        run: |
+          if git diff --quiet -- data.json; then
+            echo "data.json unchanged; nothing to commit"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- data.json
+          git commit -m "Update wind observations [skip ci]"
+          git push origin HEAD:main
