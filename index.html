@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
+<title>Lake Winds: GV · DC · JV</title>
+<style>
+:root{--bg:#0f1419;--card:#18202a;--card2:#1e2833;--fg:#e6edf3;--mut:#8b98a5;--acc:#4fc3f7;--ok:#5bd68a;--warn:#ffb74d;--bad:#ef5350;--line:#2a3542}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+a{color:var(--acc);text-decoration:none}a:hover{text-decoration:underline}
+header{padding:14px 16px 8px;border-bottom:1px solid var(--line);position:sticky;top:0;background:rgba(15,20,25,.96);z-index:5}
+header h1{margin:0;font-size:20px}
+header .sub{color:var(--mut);font-size:13px}
+nav{margin-top:6px;display:flex;gap:8px;flex-wrap:wrap}
+nav a{background:var(--card2);padding:3px 10px;border-radius:12px;font-size:13px}
+main{max-width:1200px;margin:0 auto;padding:10px}
+section.lake{margin:14px 0 26px}
+section.lake>h2{font-size:18px;margin:6px 4px 10px;border-left:4px solid var(--acc);padding-left:8px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
+.st{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 10px 6px;min-width:0}
+.st.stale{border-color:#6b4e1f}.st.down{border-color:#5a2a2a}
+.st h3{margin:0;font-size:15px}
+.meta{color:var(--mut);font-size:12px;margin:2px 0 6px}
+.now{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;background:var(--card2);border-radius:8px;padding:6px 8px;margin-bottom:6px}
+.now .big{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums}
+.badge{font-size:11px;padding:1px 7px;border-radius:9px;font-weight:600}
+.b-ok{background:#1f3d2b;color:var(--ok)}.b-stale{background:#4a3613;color:var(--warn)}.b-down{background:#4a1f1f;color:var(--bad)}
+.asof{font-size:12px;color:var(--mut)}
+table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums;font-size:13px}
+th{color:var(--mut);font-weight:500;text-align:right;padding:2px 4px;border-bottom:1px solid var(--line)}
+td{text-align:right;padding:2px 4px;border-bottom:1px solid #212b36}
+th:first-child,td:first-child{text-align:left}
+tr.newest td{background:#16384a;font-weight:700}
+tr.gap td{color:var(--warn);font-size:12px;text-align:center;background:#231d12}
+.k0{color:var(--mut)}.k1{color:var(--fg)}.k2{color:var(--ok)}.k3{color:var(--warn)}.k4{color:var(--bad)}
+.scroll{max-height:330px;overflow:auto}
+.note{color:var(--mut);font-size:12px;margin:4px 0}
+.err{color:var(--bad);font-size:13px}
+footer{color:var(--mut);font-size:12px;padding:16px;max-width:1200px;margin:0 auto;border-top:1px solid var(--line)}
+@media (max-width:420px){.grid{grid-template-columns:1fr}.now .big{font-size:20px}}
+</style>
+</head>
+<body>
+<header>
+  <h1>Lake Winds <span class="sub">· wind °T / kt · times MT</span></h1>
+  <div class="sub" id="status">Loading…</div>
+  <nav><a href="#GV">GV Grantsville</a><a href="#DC">DC Deer Creek</a><a href="#JV">JV Jordanelle</a></nav>
+</header>
+<main id="main"></main>
+<footer>
+  Direction = degrees true the wind is <b>from</b>, plus 16-point compass. Speeds in knots (km/h×0.539957, mph×0.868976, m/s×1.94384).
+  Speed colours: <span class="k0">&lt;8</span> · <span class="k1">8–12</span> · <span class="k2">13–19</span> · <span class="k3">20–27</span> · <span class="k4">28+</span> kt.
+  A station is <span style="color:var(--warn)">STALE</span> when its newest ob is older than 45 min.
+  NWS data: api.weather.gov (it sometimes drops obs, so gaps are marked; the weather.gov timeseries page is the gap-free reference).
+  Ambient Weather: public dashboard data, latest reading only (history is built up by the fetch script).
+  Tempest Barbed Wire Beach: scraped from the TheMGroup plain-HTML copy by the fetch script.
+  The page refreshes every 5 min. Readings are shown as reported; nothing is estimated.
+</footer>
+
+<script type="application/json" id="config">
+{
+ "hours": 3,
+ "stale_min": 45,
+ "lakes": [
+  {"id":"GV","name":"Grantsville Reservoir","center":[40.546,-112.512],"stations":[
+   {"id":"GVRES","name":"Grantsville Res - UWA","role":"Reservoir station (Ambient Weather, 15-min)","type":"awn","slug":"b43f2f18c9b6ad0a2dbeaa4dd1924eaf","lat":40.546,"lon":-112.512,"url":"https://ambientweather.net/dashboard/b43f2f18c9b6ad0a2dbeaa4dd1924eaf"},
+   {"id":"SMT","name":"SMT South Mountain","role":"Ridge indicator","type":"nws","lat":40.4597,"lon":-112.41,"url":"https://www.weather.gov/wrh/timeseries?site=SMT&hours=168"},
+   {"id":"UTSTO","name":"UTSTO SR-36 Stockton Bar","role":"UDOT, gap wind","type":"nws","lat":40.4689,"lon":-112.352,"url":"https://www.weather.gov/wrh/timeseries?site=UTSTO&hours=72"}
+  ]},
+  {"id":"DC","name":"Deer Creek Reservoir","center":[40.435,-111.50],"stations":[
+   {"id":"SND","name":"SND Sundance / Arrowhead Summit","role":"Ridge","type":"nws","lat":40.3684,"lon":-111.594,"url":"https://www.weather.gov/wrh/timeseries?site=SND&hours=168"},
+   {"id":"PC062","name":"PC062 DC Dam Base","role":"PacifiCorp, lakeside","type":"nws","lat":40.4008,"lon":-111.539,"url":"https://www.weather.gov/wrh/timeseries?site=PC062&hours=72"},
+   {"id":"UTDCD","name":"UTDCD US-189 at Deer Creek Dam","role":"UDOT, at the dam","type":"nws","lat":40.4053,"lon":-111.5266,"url":"https://www.weather.gov/wrh/timeseries?site=UTDCD&hours=168"},
+   {"id":"BWB","name":"Barbed Wire Beach (Tempest 114523)","role":"Lakeside beach, Tempest","type":"tempest","url":"https://tempestwx.com/station/114523/","copy_url":"http://65.130.222.29/fastDC.htm","section":"Barbed Wire Beach"}
+  ]},
+  {"id":"JV","name":"Jordanelle Reservoir","center":[40.62,-111.415],"stations":[
+   {"id":"G6314","name":"G6314 SailPC","role":"Lakeside","type":"nws","lat":40.6173,"lon":-111.4212,"url":"https://www.weather.gov/wrh/timeseries?site=G6314&hours=168"},
+   {"id":"PC061","name":"PC061 Jordanelle Reservoir","role":"PacifiCorp, lakeside","type":"nws","lat":40.5989,"lon":-111.4315,"url":"https://www.weather.gov/wrh/timeseries?site=PC061&hours=72"},
+   {"id":"PC023","name":"PC023 North Jordanelle","role":"PacifiCorp, north end","type":"nws","lat":40.6685,"lon":-111.4319,"url":"https://www.weather.gov/wrh/timeseries?site=PC023&hours=168"},
+   {"id":"UTMFS","name":"UTMFS US-40 Mayflower Summit","role":"UDOT, summit","type":"nws","lat":40.6529,"lon":-111.4569,"url":"https://www.weather.gov/wrh/timeseries?site=UTMFS&hours=72"},
+   {"id":"UTSVC","name":"UTSVC I-80 Silver Creek Jct","role":"UDOT, I-80","type":"nws","lat":40.7321,"lon":-111.4983,"url":"https://www.weather.gov/wrh/timeseries?site=UTSVC&hours=72"}
+  ]}
+ ]
+}
+</script>
+
+<script>
+(function(){
+"use strict";
+var CFG = JSON.parse(document.getElementById('config').textContent);
+var HOURS = CFG.hours, STALE = CFG.stale_min, REFRESH_MS = 5*60*1000;
+var PTS = ["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"];
+var KT = {"km_h-1":0.539957,"m_s-1":1.94384,"mph":0.868976,"kt":1};
+function compass(d){return d==null?"":PTS[Math.round(((d%360)+360)%360/22.5)%16];}
+function r0(x){return x==null||isNaN(x)?null:Math.round(x);}
+var fmtMT = new Intl.DateTimeFormat('en-US',{timeZone:'America/Denver',hour:'2-digit',minute:'2-digit',hour12:false,timeZoneName:'short'});
+var fmtMTd = new Intl.DateTimeFormat('en-US',{timeZone:'America/Denver',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit',hour12:false,timeZoneName:'short'});
+var fmtKST = new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Seoul',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit',hour12:false});
+function hm(t){return fmtMT.formatToParts(t).filter(function(p){return p.type=='hour'||p.type=='minute'}).map(function(p){return p.value}).join(':').replace(/^24/,'00');}
+function tzab(t){var p=fmtMT.formatToParts(t).filter(function(p){return p.type=='timeZoneName'})[0];return p?p.value:'MT';}
+function esc(s){return String(s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]});}
+function kcls(k){return k==null?'':k<8?'k0':k<13?'k1':k<20?'k2':k<28?'k3':'k4';}
+function distBrg(c,lat,lon){
+  if(lat==null) return "";
+  var R=3440.065,t=Math.PI/180,p1=c[0]*t,p2=lat*t,dl=(lon-c[1])*t;
+  var d=2*R*Math.asin(Math.sqrt(Math.pow(Math.sin((p2-p1)/2),2)+Math.cos(p1)*Math.cos(p2)*Math.pow(Math.sin(dl/2),2)));
+  var b=(Math.atan2(Math.sin(dl)*Math.cos(p2),Math.cos(p1)*Math.sin(p2)-Math.sin(p1)*Math.cos(p2)*Math.cos(dl))/t+360)%360;
+  if(d<0.5) return "at the lake";
+  return d.toFixed(1)+" nm "+("00"+Math.round(b)).slice(-3)+"° from lake center";
+}
+
+// state: station id -> {obs:[{t:ms,dir,kt,gkt,lull?,compassOnly?}], src:{}, err:[]}
+var STATE = {};
+CFG.lakes.forEach(function(l){l.stations.forEach(function(s){STATE[s.id]={obs:[],src:{},err:[]};});});
+
+function mergeObs(st, list){
+  var m={}; st.obs.concat(list).forEach(function(o){m[o.t]=o;});
+  var cut=Date.now()-HOURS*3600e3-10*60e3;
+  st.obs=Object.keys(m).map(function(k){return m[k];}).filter(function(o){return o.t>=cut;}).sort(function(a,b){return b.t-a.t;});
+}
+
+function loadDataJson(){
+  return fetch('data.json?_='+Date.now(),{cache:'no-store'}).then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();})
+  .then(function(d){
+    window.__DATA_GEN=d.generated_utc;
+    Object.keys(d.stations||{}).forEach(function(id){
+      var s=d.stations[id]; if(!STATE[id]) return;
+      var list=(s.obs||[]).map(function(o){return {t:Date.parse(o.t),dir:o.dir,kt:o.kt,gkt:o.gkt,lull:o.lull,compass:o.compass,compassOnly:o.compass_only};});
+      mergeObs(STATE[id],list);
+      STATE[id].src.script=s.ok?'ok':'failed';
+      if(!s.ok && s.error) STATE[id].err.push('fetch script: '+s.error);
+      if(s.note) STATE[id].note=s.note;
+    });
+    return true;
+  }).catch(function(e){window.__DATA_GEN=null;return false;});
+}
+
+function liveNWS(s){
+  var start=new Date(Date.now()-HOURS*3600e3).toISOString().replace(/\.\d+Z$/,'Z');
+  return fetch('https://api.weather.gov/stations/'+s.id+'/observations?start='+start,{headers:{'Accept':'application/geo+json'}})
+  .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();})
+  .then(function(d){
+    var list=[];
+    (d.features||[]).forEach(function(f){
+      var p=f.properties, ws=p.windSpeed||{}, wg=p.windGust||{}, wd=p.windDirection||{};
+      if(ws.value==null) return; // skip obs without wind
+      var fs=KT[(ws.unitCode||'').split(':').pop()], fg=KT[(wg.unitCode||'').split(':').pop()]||fs;
+      if(!fs) return;
+      list.push({t:Date.parse(p.timestamp),dir:wd.value==null?null:r0(wd.value),kt:r0(ws.value*fs),gkt:wg.value==null?null:r0(wg.value*fg)});
+    });
+    mergeObs(STATE[s.id],list); STATE[s.id].src.live='ok'; STATE[s.id].err=[];
+  }).catch(function(e){STATE[s.id].src.live='failed';STATE[s.id].err.push('live api.weather.gov: '+e.message);});
+}
+
+function liveAWN(s){
+  return fetch('https://lightning.ambientweather.net/devices?public.slug='+encodeURIComponent(s.slug))
+  .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();})
+  .then(function(d){
+    var ld=d&&d.data&&d.data[0]&&d.data[0].lastData; if(!ld||ld.dateutc==null) throw new Error('no lastData');
+    // public weather fields only
+    var o={t:ld.dateutc,dir:ld.winddir==null?null:r0(ld.winddir),kt:ld.windspeedmph==null?null:r0(ld.windspeedmph*KT.mph),gkt:ld.windgustmph==null?null:r0(ld.windgustmph*KT.mph)};
+    if(o.kt!=null) mergeObs(STATE[s.id],[o]); STATE[s.id].src.live='ok';
+  }).catch(function(e){STATE[s.id].src.live='failed';STATE[s.id].err.push('live Ambient: '+e.message);});
+}
+
+function rowsWithGaps(s, obs){
+  var out=[], diffs=[];
+  for(var i=0;i+1<obs.length;i++) diffs.push((obs[i].t-obs[i+1].t)/60e3);
+  // native interval = smallest regular spacing seen (ignore special obs < 4 min apart)
+  var sd=diffs.filter(function(x){return x>=4;}).sort(function(a,b){return a-b}), base=sd.length?sd[0]:10;
+  var gapThr=Math.max(12, base*1.8);
+  if(s.type==='awn') gapThr=Math.max(25,gapThr);
+  obs.forEach(function(o,i){
+    out.push({o:o});
+    if(i+1<obs.length && s.type!=='awn' && diffs[i]>gapThr) out.push({gap:Math.round(diffs[i])});
+  });
+  return out;
+}
+
+function stationCard(lake, s){
+  var st=STATE[s.id], obs=st.obs, now=Date.now();
+  var newest=obs[0], age=newest?(now-newest.t)/60e3:null;
+  var cls='st', badge;
+  if(!newest){cls+=' down';badge='<span class="badge b-down">UNAVAILABLE</span>';}
+  else if(age>STALE){cls+=' stale';badge='<span class="badge b-stale">STALE '+Math.round(age)+' min</span>';}
+  else badge='<span class="badge b-ok">LIVE '+Math.round(age)+' min</span>';
+  var h='<div class="'+cls+'"><h3><a href="'+esc(s.url)+'" target="_blank" rel="noopener">'+esc(s.name)+' ↗</a></h3>';
+  var dist=distBrg(lake.center,s.lat,s.lon);
+  h+='<div class="meta">'+esc(s.role)+(dist?' · '+dist:'')+'</div>';
+  if(newest){
+    var dtxt=newest.compassOnly?esc(newest.compass)+' (compass only)':(newest.dir==null?'—':('00'+newest.dir).slice(-3)+'° '+compass(newest.dir));
+    var stxt=newest.compassOnly?(newest.lull+'–'+newest.gkt+' kt'):(newest.kt+(newest.gkt!=null?' G'+newest.gkt:'')+' kt');
+    h+='<div class="now"><span class="big">'+dtxt+' · <span class="'+kcls(newest.kt)+'">'+stxt+'</span></span>'+badge+
+       '<span class="asof">as of '+fmtMTd.format(newest.t)+' · KST '+fmtKST.format(newest.t)+'</span></div>';
+  } else {
+    h+='<div class="now">'+badge+'<span class="asof">no readings in the last '+HOURS+' h</span></div>';
+  }
+  if(s.type==='tempest' && !obs.length){
+    h+='<div class="note">Tempest has no keyless public API. Readings come from the fetch script (plain-HTML copy at <a href="'+esc(s.copy_url)+'" target="_blank" rel="noopener">fastDC.htm</a>). Open the <a href="'+esc(s.url)+'" target="_blank" rel="noopener">Tempest page</a> for live data.</div>';
+  }
+  if(st.err.length && !obs.length) h+='<div class="err">'+st.err.map(esc).join('<br>')+'</div>';
+  if(obs.length){
+    var tempest=s.type==='tempest';
+    h+='<div class="scroll"><table><thead><tr><th>'+tzab(newest.t)+'</th><th>°T</th><th>from</th><th>'+(tempest?'low kt':'kt')+'</th><th>gust kt</th></tr></thead><tbody>';
+    rowsWithGaps(s,obs).forEach(function(r,i){
+      if(r.gap){h+='<tr class="gap"><td colspan="5">gap '+r.gap+' min: no wind obs in api.weather.gov. <a href="'+esc(s.url)+'" target="_blank" rel="noopener">See timeseries</a></td></tr>';return;}
+      var o=r.o, nw=(o===newest);
+      var d=o.compassOnly?'—':(o.dir==null?'—':('00'+o.dir).slice(-3));
+      var c=o.compassOnly?o.compass:compass(o.dir);
+      var k=o.compassOnly?o.lull:o.kt;
+      h+='<tr'+(nw?' class="newest"':'')+'><td>'+hm(o.t)+'</td><td>'+d+'</td><td>'+esc(c||'—')+'</td><td class="'+kcls(k)+'">'+(k==null?'—':k)+'</td><td class="'+kcls(o.gkt)+'">'+(o.gkt==null?'—':o.gkt)+'</td></tr>';
+    });
+    h+='</tbody></table></div>';
+    var notes=[];
+    if(s.type==='awn') notes.push('Ambient public data gives the latest reading only. Older rows exist only if the fetch script has been polling.');
+    if(tempest) notes.push('Source gives compass point and low–high (lull–gust) range in mph only (converted to kt). Times are as printed by the copy.');
+    if(s.type==='nws'){ var oldest=obs[obs.length-1]; if((oldest.t-(now-HOURS*3600e3))/60e3>30) notes.push('api.weather.gov returned nothing before '+hm(oldest.t)+'. <a href="'+esc(s.url)+'" target="_blank" rel="noopener">Timeseries</a> may have more.'); }
+    if(st.note) notes.push(esc(st.note));
+    notes.forEach(function(n){h+='<div class="note">'+n+'</div>';});
+  }
+  return h+'</div>';
+}
+
+function render(){
+  var h='';
+  CFG.lakes.forEach(function(l){
+    h+='<section class="lake" id="'+l.id+'"><h2>'+l.id+' · '+esc(l.name)+'</h2><div class="grid">';
+    l.stations.forEach(function(s){h+=stationCard(l,s);});
+    h+='</div></section>';
+  });
+  document.getElementById('main').innerHTML=h;
+  var n=new Date();
+  document.getElementById('status').innerHTML='Updated '+fmtMTd.format(n)+' (KST '+fmtKST.format(n)+') · last '+HOURS+' h · auto-refresh 5 min'+
+    (window.__DATA_GEN?' · data.json '+fmtMT.format(new Date(window.__DATA_GEN)):' · no data.json (live sources only)');
+}
+
+function refresh(){
+  CFG.lakes.forEach(function(l){l.stations.forEach(function(s){STATE[s.id].err=[];});});
+  loadDataJson().then(function(){
+    render();
+    var jobs=[];
+    CFG.lakes.forEach(function(l){l.stations.forEach(function(s){
+      if(s.type==='nws') jobs.push(liveNWS(s));
+      else if(s.type==='awn') jobs.push(liveAWN(s));
+    });});
+    return Promise.all(jobs);
+  }).then(function(){render(); document.body.setAttribute('data-ready','1');});
+}
+refresh(); setInterval(refresh, REFRESH_MS);
+document.addEventListener('visibilitychange',function(){if(!document.hidden) refresh();});
+})();
+</script>
+</body>
+</html>
