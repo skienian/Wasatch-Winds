@@ -1,17 +1,29 @@
 name: Refresh wind data
 
+# Schedule (Mountain Time, America/Denver, so MDT/MST is handled automatically):
+#   Day   05:00-17:59 MT  data.json is refreshed about every 5 minutes. Each run
+#                         loops for about 29 minutes, then queues the next run
+#                         with workflow_dispatch so the day does not depend on
+#                         GitHub's throttled cron. The cron below is the backup.
+#   Night 18:00-04:59 MT  about once an hour: a run fetches only when data.json
+#                         is at least 50 minutes old.
+# GitHub often starts scheduled runs late, so the cron uses odd minutes (7, 37)
+# to stay off the busy top of the hour.
+
 on:
   schedule:
-    - cron: "*/10 * * * *"
+    - cron: "7,37 * * * *"
   workflow_dispatch:
   push:
     branches:
       - main
 
 permissions:
-  contents: write
+  contents: write   # commit data.json
+  actions: write    # queue the next daytime run (workflow_dispatch)
 
 # One refresh at a time so two runs cannot overwrite each other's data.json.
+# A run that arrives while another is going waits for it to finish.
 concurrency:
   group: refresh-wind-data
   cancel-in-progress: false
@@ -19,26 +31,115 @@ concurrency:
 jobs:
   refresh:
     runs-on: ubuntu-latest
+    timeout-minutes: 40
     # [skip ci] is also honored by GitHub for push events. This guard covers
     # the data commit itself so a bot push cannot start another refresh.
     if: ${{ github.event_name != 'push' || !contains(github.event.head_commit.message, '[skip ci]') }}
+    env:
+      DAY_START_HOUR: "5"     # 05:00 MT
+      DAY_END_HOUR: "18"      # 18:00 MT
+      DAY_INTERVAL_SEC: "300" # 5 min between daytime fetches
+      DAY_FETCHES: "6"        # fetches per daytime run (0, 5, ... 25 min)
+      DAY_RUN_SEC: "1710"     # end each daytime run about 28.5 min after it started
+      NIGHT_MIN_AGE_SEC: "3000" # night: fetch only if data.json is 50+ min old
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           ref: main
 
-      - name: Fetch observations
-        run: python3 fetch.py
-
-      - name: Commit data.json if it changed
+      - name: Pick day or night mode
+        id: mode
         run: |
-          if git diff --quiet -- data.json; then
-            echo "data.json unchanged; nothing to commit"
-            exit 0
+          hour=$(TZ=America/Denver date +%-H)
+          echo "Mountain Time now: $(TZ=America/Denver date '+%Y-%m-%d %H:%M %Z')"
+          if [ "$hour" -ge "$DAY_START_HOUR" ] && [ "$hour" -lt "$DAY_END_HOUR" ]; then
+            mode=day
+          else
+            mode=night
           fi
+          echo "mode=$mode" | tee -a "$GITHUB_OUTPUT"
+
+      - name: Refresh data.json
+        env:
+          MODE: ${{ steps.mode.outputs.mode }}
+          EVENT: ${{ github.event_name }}
+        run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -- data.json
-          git commit -m "Update wind observations [skip ci]"
-          git push origin HEAD:main
+
+          # Fetch once and push data.json if it changed. Never fails the job:
+          # a bad fetch or push is logged and the next pass tries again.
+          refresh_once() {
+            echo "::group::fetch $(date -u +%H:%M:%SZ)"
+            python3 fetch.py || echo "fetch.py exited with an error"
+            echo "::endgroup::"
+            if git diff --quiet -- data.json; then
+              echo "data.json unchanged; nothing to commit"
+              return 0
+            fi
+            git add -- data.json
+            if ! git commit -q -m "Update wind observations [skip ci]"; then
+              echo "::warning::git commit failed"; return 0
+            fi
+            for attempt in 1 2 3; do
+              if git pull -q --rebase origin main && git push -q origin HEAD:main; then
+                echo "pushed $(git rev-parse --short HEAD) at $(date -u +%H:%M:%SZ)"
+                return 0
+              fi
+              git rebase --abort 2>/dev/null || true
+              sleep $((attempt * 5))
+            done
+            echo "::warning::could not push data.json; resetting to origin/main"
+            git fetch -q origin main && git reset -q --hard origin/main
+          }
+
+          if [ "$MODE" = night ]; then
+            if [ "$EVENT" = schedule ]; then
+              gen=$(python3 -c "import json;print(json.load(open('data.json')).get('generated_utc',''))" 2>/dev/null || true)
+              gen_epoch=$(date -u -d "$gen" +%s 2>/dev/null || echo 0)
+              age=$(( $(date -u +%s) - gen_epoch ))
+              echo "data.json generated_utc=$gen (age ${age}s)"
+              if [ "$age" -lt "$NIGHT_MIN_AGE_SEC" ]; then
+                echo "Night mode: data.json is under $((NIGHT_MIN_AGE_SEC / 60)) min old; skipping this slot"
+                exit 0
+              fi
+            fi
+            echo "Night mode: one refresh"
+            refresh_once
+            exit 0
+          fi
+
+          echo "Day mode: $DAY_FETCHES refreshes, every $((DAY_INTERVAL_SEC / 60)) min"
+          start=$(date +%s)
+          for i in $(seq 0 $((DAY_FETCHES - 1))); do
+            wait=$(( start + i * DAY_INTERVAL_SEC - $(date +%s) ))
+            if [ "$wait" -gt 0 ]; then sleep "$wait"; fi
+            refresh_once
+          done
+          # Hold until about 28.5 min so the next run's first fetch lands
+          # about 5 min after this run's last one.
+          wait=$(( start + DAY_RUN_SEC - $(date +%s) ))
+          if [ "$wait" -gt 0 ]; then sleep "$wait"; fi
+
+      - name: Queue the next daytime run
+        if: ${{ success() && steps.mode.outputs.mode == 'day' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          hour=$(TZ=America/Denver date +%-H)
+          if [ "$hour" -lt "$DAY_START_HOUR" ] || [ "$hour" -ge "$DAY_END_HOUR" ]; then
+            echo "It is now night in Mountain Time; not queuing another daytime run"
+            exit 0
+          fi
+          # If a run (e.g. from the cron) is already waiting, it starts as soon
+          # as this one ends, so do not add another.
+          waiting=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow refresh.yml --limit 20 \
+                      --json status --jq '[.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested")] | length' \
+                    || echo 0)
+          if [ "${waiting:-0}" -gt 0 ]; then
+            echo "$waiting run(s) already waiting; not queuing another"
+            exit 0
+          fi
+          gh workflow run refresh.yml --repo "$GITHUB_REPOSITORY" --ref main
+          echo "Queued the next daytime run"

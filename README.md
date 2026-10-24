@@ -17,7 +17,12 @@ With no `data.json`, the page still works: the 10 NWS stations show a full 3 hou
 
 ## Automatic refresh
 
-`.github/workflows/refresh.yml` checks out this repo and runs `python3 fetch.py` every 10 minutes, on manual dispatch, and on every push to `main`. The script is Python 3.9+, standard library only, and uses public endpoints — no API keys or tokens.
+`.github/workflows/refresh.yml` checks out this repo and runs `python3 fetch.py` on a schedule set in Mountain Time (America/Denver, so MDT and MST are both handled):
+
+- **05:00–18:00 MT**: about every 5 minutes. Each run fetches every 5 minutes for about 28 minutes, then queues the next run itself (`workflow_dispatch`), so the daytime cadence does not depend on GitHub's cron, which GitHub often delays or thins out.
+- **18:00–05:00 MT**: about once an hour. The cron (minutes 7 and 37) fires every 30 minutes, and a night run fetches only when `data.json` is at least 50 minutes old.
+
+It also runs on manual dispatch and on every push to `main`. The script is Python 3.9+, standard library only, and uses public endpoints — no API keys or tokens.
 
 `fetch.py` reads the station list from `index.html` and rewrites `data.json` with a rolling 3-hour history. It keeps the previous `data.json` and merges new readings into it. That matters for:
 
