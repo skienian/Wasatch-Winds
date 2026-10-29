@@ -1,6 +1,6 @@
 # Wasatch Winds
 
-Wind observations for Grantsville (GV), Deer Creek (DC), and Jordanelle (JV): 12 stations, about the last 3 hours, times in Mountain Time.
+Wind observations for Grantsville (GV), Deer Creek (DC), and Jordanelle (JV): 13 stations, about the last 3 hours, times in Mountain Time.
 
 Site: https://skienian.github.io/Wasatch-Winds/ (after Pages is turned on; see below).
 
@@ -8,12 +8,12 @@ Site: https://skienian.github.io/Wasatch-Winds/ (after Pages is turned on; see b
 
 `index.html` is a self-contained static page. It loads `data.json` when that file is present, then also fetches live data in the browser:
 
-- **api.weather.gov** for the 10 NWS, UDOT, and PacifiCorp stations (CORS `*`, so it works on any static host).
+- **api.weather.gov** for the 11 NWS, UDOT, and PacifiCorp stations (CORS `*`, so it works on any static host).
 - **Ambient Weather** public dashboard for Grantsville Reservoir. That endpoint allows CORS, but it returns the **latest reading only**.
 
 The page redraws every 5 minutes and when the tab regains focus. The newest row is highlighted. A station is marked STALE when its newest observation is older than 45 minutes. Gaps in the NWS feed are marked and linked to the weather.gov timeseries page.
 
-With no `data.json`, the page still works: the 10 NWS stations show a full 3 hours, Grantsville shows the latest observation only, and Barbed Wire Beach shows a link-only card.
+With no `data.json`, the page still works: the 11 NWS stations show a full 3 hours, Grantsville shows the latest observation only, and Barbed Wire Beach shows a link-only card.
 
 ## Automatic refresh
 
