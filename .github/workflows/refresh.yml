@@ -1,11 +1,11 @@
 name: Refresh wind data
 
 # Schedule (Mountain Time, America/Denver, so MDT/MST is handled automatically):
-#   Day   05:00-17:59 MT  data.json is refreshed about every 5 minutes. Each run
+#   Day   05:00-16:59 MT  data.json is refreshed about every 5 minutes. Each run
 #                         loops for about 29 minutes, then queues the next run
 #                         with workflow_dispatch so the day does not depend on
 #                         GitHub's throttled cron. The cron below is the backup.
-#   Night 18:00-04:59 MT  about once an hour: a run fetches only when data.json
+#   Night 17:00-04:59 MT  about once an hour: a run fetches only when data.json
 #                         is at least 50 minutes old.
 # GitHub often starts scheduled runs late, so the cron uses odd minutes (7, 37)
 # to stay off the busy top of the hour.
@@ -37,7 +37,7 @@ jobs:
     if: ${{ github.event_name != 'push' || !contains(github.event.head_commit.message, '[skip ci]') }}
     env:
       DAY_START_HOUR: "5"     # 05:00 MT
-      DAY_END_HOUR: "18"      # 18:00 MT
+      DAY_END_HOUR: "17"      # 17:00 MT
       DAY_INTERVAL_SEC: "300" # 5 min between daytime fetches
       DAY_FETCHES: "6"        # fetches per daytime run (0, 5, ... 25 min)
       DAY_RUN_SEC: "1710"     # end each daytime run about 28.5 min after it started
